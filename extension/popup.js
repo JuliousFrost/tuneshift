@@ -11,6 +11,9 @@ const {
   stepPlaybackRate,
 } = TuneShiftCore;
 
+const THEME_STORAGE_KEY = "tuneshift-popup-theme";
+
+const themeButton = document.getElementById("theme-button");
 const semitoneValue = document.getElementById("semitone-value");
 const tempoValue = document.getElementById("tempo-value");
 const toggleButton = document.getElementById("toggle-button");
@@ -19,12 +22,13 @@ const increaseButton = document.getElementById("increase-button");
 const tempoDecreaseButton = document.getElementById("tempo-decrease-button");
 const tempoIncreaseButton = document.getElementById("tempo-increase-button");
 const resetButton = document.getElementById("reset-button");
-const statusDot = document.getElementById("status-dot");
+const statusNote = document.getElementById("status-note");
 const statusText = document.getElementById("status-text");
 
 const popupState = {
   activeTab: null,
   state: null,
+  theme: "dark",
   pendingMutations: 0,
   requestQueue: Promise.resolve(),
 };
@@ -40,7 +44,54 @@ function createFallbackState() {
     readyState: null,
     bufferedFrames: 0,
     videoSrc: null,
+    lastError: null,
   };
+}
+
+function isValidTheme(theme) {
+  return theme === "dark" || theme === "light";
+}
+
+function getInitialTheme() {
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (isValidTheme(storedTheme)) {
+      return storedTheme;
+    }
+  } catch (_error) {
+    // Ignore storage failures and fall back to system preference.
+  }
+
+  if (typeof window.matchMedia === "function") {
+    try {
+      return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    } catch (_error) {
+      // Ignore matchMedia failures and keep the default theme.
+    }
+  }
+
+  return "dark";
+}
+
+function applyTheme(theme) {
+  const nextTheme = isValidTheme(theme) ? theme : "dark";
+  const alternateTheme = nextTheme === "dark" ? "light" : "dark";
+
+  popupState.theme = nextTheme;
+  document.body.dataset.theme = nextTheme;
+  themeButton.setAttribute("aria-label", `Switch to ${alternateTheme} theme`);
+  themeButton.setAttribute("title", `Switch to ${alternateTheme} theme`);
+}
+
+function toggleTheme() {
+  const nextTheme = popupState.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  } catch (_error) {
+    // Ignore storage failures and keep the in-memory theme.
+  }
 }
 
 function setControlAvailability(enabled) {
@@ -52,6 +103,64 @@ function setControlAvailability(enabled) {
   resetButton.disabled = !enabled;
 }
 
+function getStatusPresentation(state, options = {}) {
+  const nextState = state || createFallbackState();
+
+  if (options.tabSupported === false) {
+    return {
+      tone: "warning",
+      text: options.fallbackStatus || "Open a YouTube watch page",
+    };
+  }
+
+  if (options.fallbackStatus) {
+    return {
+      tone: options.fallbackTone || "inactive",
+      text: options.fallbackStatus,
+    };
+  }
+
+  if (nextState.lastError || nextState.pipelineState === "error") {
+    return {
+      tone: "warning",
+      text: nextState.lastError || "Audio pipeline error",
+    };
+  }
+
+  if (!nextState.videoDetected) {
+    return {
+      tone: "warning",
+      text: "Open a YouTube video",
+    };
+  }
+
+  if (nextState.enabled && nextState.pipelineState !== "active") {
+    return {
+      tone: "active",
+      text: `Preparing (${formatSemitoneValue(nextState.semitones)} st, ${formatPlaybackRate(nextState.playbackRate)})`,
+    };
+  }
+
+  if (nextState.enabled) {
+    return {
+      tone: "active",
+      text: `Active (${formatSemitoneValue(nextState.semitones)} st, ${formatPlaybackRate(nextState.playbackRate)})`,
+    };
+  }
+
+  if (nextState.semitones !== 0 || nextState.playbackRate !== DEFAULT_PLAYBACK_RATE) {
+    return {
+      tone: "inactive",
+      text: `Ready (${formatSemitoneValue(nextState.semitones)} st, ${formatPlaybackRate(nextState.playbackRate)})`,
+    };
+  }
+
+  return {
+    tone: "inactive",
+    text: "Inactive",
+  };
+}
+
 function setView(state, options = {}) {
   if (state === null) {
     popupState.state = null;
@@ -61,6 +170,7 @@ function setView(state, options = {}) {
 
   const tabSupported = options.tabSupported !== false;
   const nextState = popupState.state || createFallbackState();
+  const statusPresentation = getStatusPresentation(nextState, options);
 
   semitoneValue.textContent = formatSemitoneValue(nextState.semitones);
   tempoValue.textContent = formatPlaybackRate(nextState.playbackRate);
@@ -68,10 +178,10 @@ function setView(state, options = {}) {
   toggleButton.setAttribute("aria-pressed", String(Boolean(nextState.enabled)));
   toggleButton.setAttribute("aria-label", nextState.enabled ? "Turn TuneShift off" : "Turn TuneShift on");
   toggleButton.setAttribute("title", nextState.enabled ? "Turn TuneShift off" : "Turn TuneShift on");
-  statusText.textContent = options.fallbackStatus || nextState.status || "No status available";
 
-  const ready = nextState.pipelineState === "active" || nextState.videoDetected;
-  statusDot.classList.toggle("ready", ready);
+  statusNote.classList.remove("active", "inactive", "warning");
+  statusNote.classList.add(statusPresentation.tone);
+  statusText.textContent = statusPresentation.text;
 
   const canDecrease = tabSupported && nextState.semitones > MIN_SEMITONES;
   const canIncrease = tabSupported && nextState.semitones < MAX_SEMITONES;
@@ -88,7 +198,7 @@ function setView(state, options = {}) {
     !tabSupported || (nextState.semitones === 0 && nextState.playbackRate === DEFAULT_PLAYBACK_RATE);
 }
 
-function queueStateMutation(partialState, messageFactory, fallbackStatus) {
+function queueStateMutation(partialState, messageFactory, fallbackStatus, fallbackTone) {
   if (!popupState.activeTab?.id) {
     return Promise.resolve();
   }
@@ -102,6 +212,7 @@ function queueStateMutation(partialState, messageFactory, fallbackStatus) {
   setView(optimisticState, {
     tabSupported: true,
     fallbackStatus,
+    fallbackTone,
   });
 
   popupState.pendingMutations += 1;
@@ -131,6 +242,7 @@ function queueStateMutation(partialState, messageFactory, fallbackStatus) {
       setView(popupState.state, {
         tabSupported: true,
         fallbackStatus: error.message,
+        fallbackTone: "warning",
       });
       throw error;
     });
@@ -206,6 +318,7 @@ async function refreshState() {
     setView(null, {
       tabSupported: true,
       fallbackStatus: response?.error || "Unable to load tab state",
+      fallbackTone: "warning",
     });
     return;
   }
@@ -215,7 +328,7 @@ async function refreshState() {
   });
 }
 
-async function updateEnabled(enabled) {
+function updateEnabled(enabled) {
   return queueStateMutation(
     {
       enabled: Boolean(enabled),
@@ -225,11 +338,12 @@ async function updateEnabled(enabled) {
       type: MESSAGE_TYPES.SET_ENABLED,
       enabled,
     }),
-    Boolean(enabled) ? "Starting TuneShift" : "Turning TuneShift off"
+    Boolean(enabled) ? "Starting TuneShift" : "Turning TuneShift off",
+    Boolean(enabled) ? "active" : "inactive"
   );
 }
 
-async function updateSemitones(semitones) {
+function updateSemitones(semitones) {
   const nextSemitones = clampSemitones(semitones);
   return queueStateMutation(
     {
@@ -239,86 +353,64 @@ async function updateSemitones(semitones) {
       type: MESSAGE_TYPES.SET_SEMITONES,
       semitones: nextSemitones,
     }),
-    "Updating semitone shift"
+    "Updating pitch",
+    popupState.state?.enabled ? "active" : "inactive"
   );
 }
 
-async function updatePlaybackRate(playbackRate) {
+function updatePlaybackRate(playbackRate) {
   const nextPlaybackRate = clampPlaybackRate(playbackRate);
+  const nextEnabled =
+    nextPlaybackRate !== DEFAULT_PLAYBACK_RATE ? true : (popupState.state?.enabled ?? false);
+
   return queueStateMutation(
     {
-      enabled: nextPlaybackRate !== DEFAULT_PLAYBACK_RATE ? true : (popupState.state?.enabled ?? false),
-      pipelineState:
-        nextPlaybackRate !== DEFAULT_PLAYBACK_RATE || popupState.state?.enabled ? "waiting" : "ready",
+      enabled: nextEnabled,
+      pipelineState: nextEnabled ? "waiting" : "ready",
       playbackRate: nextPlaybackRate,
     },
     () => ({
       type: MESSAGE_TYPES.SET_PLAYBACK_RATE,
       playbackRate: nextPlaybackRate,
     }),
-    "Updating playback speed"
+    "Updating speed",
+    nextEnabled ? "active" : "inactive"
   );
 }
 
 decreaseButton.addEventListener("click", () => {
   const nextValue = clampSemitones((popupState.state?.semitones || 0) - 1);
-  updateSemitones(nextValue).catch((error) => {
-    setView(popupState.state, {
-      tabSupported: true,
-      fallbackStatus: error.message,
-    });
-  });
+  updateSemitones(nextValue).catch(() => {});
 });
 
 increaseButton.addEventListener("click", () => {
   const nextValue = clampSemitones((popupState.state?.semitones || 0) + 1);
-  updateSemitones(nextValue).catch((error) => {
-    setView(popupState.state, {
-      tabSupported: true,
-      fallbackStatus: error.message,
-    });
-  });
+  updateSemitones(nextValue).catch(() => {});
 });
 
 tempoDecreaseButton.addEventListener("click", () => {
   const nextValue = stepPlaybackRate(popupState.state?.playbackRate || DEFAULT_PLAYBACK_RATE, -1);
-  updatePlaybackRate(nextValue).catch((error) => {
-    setView(popupState.state, {
-      tabSupported: true,
-      fallbackStatus: error.message,
-    });
-  });
+  updatePlaybackRate(nextValue).catch(() => {});
 });
 
 tempoIncreaseButton.addEventListener("click", () => {
   const nextValue = stepPlaybackRate(popupState.state?.playbackRate || DEFAULT_PLAYBACK_RATE, 1);
-  updatePlaybackRate(nextValue).catch((error) => {
-    setView(popupState.state, {
-      tabSupported: true,
-      fallbackStatus: error.message,
-    });
-  });
+  updatePlaybackRate(nextValue).catch(() => {});
 });
 
 resetButton.addEventListener("click", () => {
   updateSemitones(0)
     .then(() => updatePlaybackRate(DEFAULT_PLAYBACK_RATE))
-    .catch((error) => {
-      setView(popupState.state, {
-        tabSupported: true,
-        fallbackStatus: error.message,
-      });
-    });
+    .catch(() => {});
 });
 
 toggleButton.addEventListener("click", () => {
-  updateEnabled(!(popupState.state?.enabled)).catch((error) => {
-    setView(popupState.state, {
-      tabSupported: true,
-      fallbackStatus: error.message,
-    });
-  });
+  updateEnabled(!(popupState.state?.enabled)).catch(() => {});
 });
+
+themeButton.addEventListener("click", toggleTheme);
+
+applyTheme(getInitialTheme());
 
 refreshState()
   .then(() => {
@@ -327,6 +419,7 @@ refreshState()
         setView(popupState.state, {
           tabSupported: Boolean(popupState.activeTab?.url?.startsWith("https://www.youtube.com/")),
           fallbackStatus: error.message,
+          fallbackTone: "warning",
         });
       });
     }, 1000);
@@ -336,5 +429,6 @@ refreshState()
     setView(null, {
       tabSupported: false,
       fallbackStatus: error.message,
+      fallbackTone: "warning",
     });
   });

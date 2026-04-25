@@ -8,8 +8,14 @@ function createPopupMarkup() {
   document.body.innerHTML = `
     <main>
       <header class="header">
-        <h1>TuneShift</h1>
-        <p class="subtitle">Pitch and tempo controls for YouTube.</p>
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-copy">
+            <h1>TuneShift</h1>
+            <p class="subtitle">Pitch and tempo controls for YouTube.</p>
+          </div>
+        </div>
+        <button id="theme-button" type="button" aria-label="Switch to light theme"></button>
       </header>
       <section class="panel">
         <div class="control-stack">
@@ -28,11 +34,11 @@ function createPopupMarkup() {
             </div>
           </div>
           <div class="controls">
-            <button id="toggle-button" type="button">Turn On</button>
+            <button id="toggle-button" type="button" aria-pressed="false"></button>
             <button id="reset-button" type="button">Reset All</button>
           </div>
         </div>
-        <div class="status-note">
+        <div id="status-note" class="status-note">
           <span id="status-dot"></span>
           <p id="status-text">Checking active tab...</p>
         </div>
@@ -64,6 +70,7 @@ describe("popup interactions", () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    localStorage.clear();
     createPopupMarkup();
 
     currentState = core.createTabState({
@@ -154,6 +161,7 @@ describe("popup interactions", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    localStorage.clear();
     delete global.chrome;
     delete global.TuneShiftCore;
     document.body.innerHTML = "";
@@ -197,5 +205,26 @@ describe("popup interactions", () => {
     await flushMicrotasks();
 
     expect(powerButton.classList.contains("on")).toBe(false);
+  });
+
+  it("loads the saved theme and toggles it persistently", async () => {
+    localStorage.setItem("tuneshift-popup-theme", "light");
+    createPopupMarkup();
+
+    const popupPath = path.resolve(__dirname, "../extension/popup.js");
+    delete require.cache[popupPath];
+    require(popupPath);
+    await flushMicrotasks();
+
+    const themeButton = document.getElementById("theme-button");
+
+    expect(document.body.dataset.theme).toBe("light");
+    expect(themeButton.getAttribute("aria-label")).toContain("dark");
+
+    themeButton.click();
+    await flushMicrotasks();
+
+    expect(document.body.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("tuneshift-popup-theme")).toBe("dark");
   });
 });
