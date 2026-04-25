@@ -345,8 +345,12 @@ function updateEnabled(enabled) {
 
 function updateSemitones(semitones) {
   const nextSemitones = clampSemitones(semitones);
+  const nextEnabled = nextSemitones !== 0 ? true : (popupState.state?.enabled ?? false);
+
   return queueStateMutation(
     {
+      enabled: nextEnabled,
+      pipelineState: nextEnabled ? "waiting" : "ready",
       semitones: nextSemitones,
     },
     () => ({
@@ -354,7 +358,7 @@ function updateSemitones(semitones) {
       semitones: nextSemitones,
     }),
     "Updating pitch",
-    popupState.state?.enabled ? "active" : "inactive"
+    nextEnabled ? "active" : "inactive"
   );
 }
 

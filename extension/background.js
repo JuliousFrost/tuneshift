@@ -126,8 +126,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
 
+    const semitones = clampSemitones(message.semitones);
+    const currentState = getTabState(tabId);
     updateTabState(tabId, {
-      semitones: clampSemitones(message.semitones),
+      enabled: semitones !== 0 ? true : currentState.enabled,
+      semitones,
+      pipelineState: semitones !== 0 || currentState.enabled ? "waiting" : "ready",
       status: "Updating semitone shift",
       lastError: null,
     });

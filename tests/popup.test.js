@@ -64,8 +64,10 @@ async function flushMicrotasks() {
 describe("popup interactions", () => {
   let currentState;
   let playbackRateRequests;
+  let semitoneRequests;
   let toggleRequests;
   let playbackDeferreds;
+  let semitoneDeferreds;
   let toggleDeferreds;
 
   beforeEach(async () => {
@@ -82,8 +84,10 @@ describe("popup interactions", () => {
       videoDetected: true,
     });
     playbackRateRequests = [];
+    semitoneRequests = [];
     toggleRequests = [];
     playbackDeferreds = [];
+    semitoneDeferreds = [];
     toggleDeferreds = [];
 
     global.TuneShiftCore = core;
@@ -116,6 +120,23 @@ describe("popup interactions", () => {
               currentState = core.mergeTabState(currentState, {
                 enabled: message.playbackRate !== 1 ? true : currentState.enabled,
                 playbackRate: message.playbackRate,
+              });
+              callback({
+                ok: true,
+                state: currentState,
+              });
+              deferred.resolve();
+            });
+            return;
+          }
+
+          if (message.type === core.MESSAGE_TYPES.SET_SEMITONES) {
+            semitoneRequests.push(message.semitones);
+            const deferred = createDeferred();
+            semitoneDeferreds.push(() => {
+              currentState = core.mergeTabState(currentState, {
+                enabled: message.semitones !== 0 ? true : currentState.enabled,
+                semitones: message.semitones,
               });
               callback({
                 ok: true,
@@ -185,6 +206,23 @@ describe("popup interactions", () => {
     await flushMicrotasks();
 
     expect(document.getElementById("tempo-value").textContent).toBe("1.25x");
+  });
+
+  it("starts TuneShift when a semitone button moves pitch away from zero", async () => {
+    const increaseButton = document.getElementById("increase-button");
+    const powerButton = document.getElementById("toggle-button");
+
+    increaseButton.click();
+    await flushMicrotasks();
+
+    expect(semitoneRequests).toEqual([1]);
+    expect(powerButton.classList.contains("on")).toBe(true);
+
+    semitoneDeferreds.shift()();
+    await flushMicrotasks();
+
+    expect(document.getElementById("semitone-value").textContent).toBe("+1");
+    expect(powerButton.classList.contains("on")).toBe(true);
   });
 
   it("queues rapid toggle clicks so the second click applies the opposite power state", async () => {

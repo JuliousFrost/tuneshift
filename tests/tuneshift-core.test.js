@@ -33,12 +33,13 @@ describe("tuneshift-core", () => {
   });
 
   it("snaps playback-rate values to the supported preset list", () => {
-    expect(PLAYBACK_RATE_PRESETS).toEqual([0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5]);
+    expect(PLAYBACK_RATE_PRESETS).toEqual([0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 2]);
     expect(clampPlaybackRate(0.52)).toBe(0.5);
     expect(clampPlaybackRate(0.8)).toBe(0.75);
     expect(clampPlaybackRate(0.9)).toBe(0.85);
     expect(clampPlaybackRate(1.08)).toBe(1.15);
     expect(clampPlaybackRate(1.39)).toBe(1.5);
+    expect(clampPlaybackRate(1.8)).toBe(2);
     expect(clampPlaybackRate("bad")).toBe(1);
   });
 
@@ -50,7 +51,8 @@ describe("tuneshift-core", () => {
     expect(stepPlaybackRate(1, -1)).toBe(0.85);
     expect(stepPlaybackRate(1, 1)).toBe(1.15);
     expect(stepPlaybackRate(0.5, -1)).toBe(0.5);
-    expect(stepPlaybackRate(1.5, 1)).toBe(1.5);
+    expect(stepPlaybackRate(1.5, 1)).toBe(2);
+    expect(stepPlaybackRate(2, 1)).toBe(2);
     expect(stepPlaybackRate("bad", 1)).toBe(1.15);
   });
 
