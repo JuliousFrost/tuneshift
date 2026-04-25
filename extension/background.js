@@ -1,6 +1,6 @@
 importScripts("lib/tuneshift-core.js");
 
-const { MESSAGE_TYPES, clampSemitones, createTabState, mergeTabState } = TuneShiftCore;
+const { MESSAGE_TYPES, clampPlaybackRate, clampSemitones, createTabState, mergeTabState } = TuneShiftCore;
 
 const tabState = new Map();
 
@@ -103,7 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     updateTabState(tabId, {
       enabled: Boolean(message.enabled),
       pipelineState: Boolean(message.enabled) ? "waiting" : "ready",
-      status: Boolean(message.enabled) ? "Starting pitch shift" : "Pitch shift disabled",
+      status: Boolean(message.enabled) ? "Starting TuneShift" : "TuneShift ready",
       lastError: null,
     });
 
@@ -141,6 +141,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === MESSAGE_TYPES.SET_PLAYBACK_RATE) {
+    const tabId = message.tabId;
+    if (typeof tabId !== "number") {
+      sendResponse({
+        ok: false,
+        error: "tabId is required",
+      });
+      return false;
+    }
+
+    const playbackRate = clampPlaybackRate(message.playbackRate);
+    updateTabState(tabId, {
+      enabled: playbackRate !== 1 ? true : getTabState(tabId).enabled,
+      playbackRate,
+      pipelineState: playbackRate !== 1 || getTabState(tabId).enabled ? "waiting" : "ready",
+      status: "Updating playback speed",
+      lastError: null,
+    });
+
+    syncStateToTab(tabId).then((state) => {
+      sendResponse({
+        ok: true,
+        state,
+      });
+    });
+    return true;
+  }
+
   return false;
 });
 
@@ -157,6 +185,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   updateTabState(tabId, {
     enabled: currentState.enabled,
     semitones: currentState.semitones,
+    playbackRate: currentState.playbackRate,
     videoDetected: false,
     pipelineState: currentState.enabled ? "waiting" : "idle",
     status: "Page loading",

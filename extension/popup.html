@@ -28,24 +28,20 @@
         padding: 18px;
       }
 
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 10px;
-        padding: 4px 10px;
-        border-radius: 999px;
-        background: rgba(116, 82, 25, 0.12);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .header {
+        margin-bottom: 16px;
       }
 
       h1 {
-        margin: 0 0 16px;
-        font-size: 22px;
-        letter-spacing: 0.03em;
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: 0.04em;
+      }
+
+      .subtitle {
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: #6c6153;
       }
 
       .panel {
@@ -54,6 +50,36 @@
         border-radius: 16px;
         background: rgba(255, 255, 255, 0.72);
         box-shadow: 0 12px 28px rgba(61, 43, 14, 0.08);
+      }
+
+      .control-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .control-group {
+        display: grid;
+        gap: 10px;
+      }
+
+      .group-header {
+        display: grid;
+        gap: 2px;
+      }
+
+      .group-title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #6c6153;
+      }
+
+      .group-copy {
+        margin: 0;
+        font-size: 12px;
+        color: #6c6153;
       }
 
       .transport {
@@ -80,7 +106,7 @@
       }
 
       .step-button:disabled,
-      .toggle-button:disabled,
+      .power-button:disabled,
       .reset-button:disabled {
         cursor: not-allowed;
         opacity: 0.45;
@@ -109,21 +135,35 @@
 
       .controls {
         display: grid;
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 58px 1fr;
         gap: 10px;
-        margin-top: 12px;
+        align-items: center;
       }
 
-      .toggle-button {
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .power-button {
+        width: 58px;
+        height: 58px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: rgba(45, 42, 38, 0.92);
+        color: #f7f1e6;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 18px rgba(61, 43, 14, 0.12);
       }
 
-      .toggle-button.on {
-        background: #2d6f3e;
+      .power-button.on {
+        background: linear-gradient(180deg, #d65b52 0%, #b2362e 100%);
+        box-shadow: 0 12px 24px rgba(179, 54, 46, 0.28);
+      }
+
+      .power-icon {
+        width: 24px;
+        height: 24px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
       .reset-button {
@@ -134,15 +174,15 @@
         font-weight: 700;
       }
 
-      .status-panel {
+      .status-note {
         margin-top: 14px;
-      }
-
-      .status-row {
         display: flex;
-        align-items: center;
         gap: 8px;
-        margin-bottom: 10px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.58);
+        border: 1px solid rgba(29, 29, 29, 0.08);
       }
 
       .status-dot {
@@ -150,47 +190,17 @@
         height: 10px;
         border-radius: 999px;
         background: #8e877d;
+        flex: 0 0 auto;
+        margin-top: 4px;
       }
 
       .status-dot.ready {
         background: #2d6f3e;
       }
 
-      .status-copy {
-        flex: 1;
-      }
-
-      .status-label {
-        font-size: 12px;
-        color: #6c6153;
-      }
-
       .status-text {
-        margin: 2px 0 0;
-        font-size: 14px;
-        font-weight: 700;
-      }
-
-      dl {
-        margin: 0;
-        display: grid;
-        grid-template-columns: 94px 1fr;
-        gap: 6px 8px;
         font-size: 12px;
-      }
-
-      dt {
-        color: #6c6153;
-      }
-
-      dd {
         margin: 0;
-        word-break: break-word;
-      }
-
-      .hint {
-        margin: 12px 0 0;
-        font-size: 12px;
         line-height: 1.45;
         color: #6c6153;
       }
@@ -198,51 +208,67 @@
   </head>
   <body>
     <main>
-      <div class="eyebrow">TuneShift MVP</div>
-      <h1>YouTube Pitch Shift</h1>
+      <header class="header">
+        <h1>TuneShift</h1>
+        <p class="subtitle">Pitch and tempo controls for YouTube.</p>
+      </header>
 
       <section class="panel">
-        <div class="transport">
-          <button id="decrease-button" class="step-button" type="button" aria-label="Decrease semitone">-</button>
-          <div class="value-card">
-            <p class="value-label">Semitones</p>
-            <p id="semitone-value" class="value-text">0</p>
+        <div class="control-stack">
+          <div class="control-group">
+            <div class="group-header">
+              <p class="group-title">Pitch</p>
+              <p class="group-copy">Shift the key in semitone steps.</p>
+            </div>
+
+            <div class="transport">
+              <button id="decrease-button" class="step-button" type="button" aria-label="Decrease semitone">-</button>
+              <div class="value-card">
+                <p class="value-label">Semitones</p>
+                <p id="semitone-value" class="value-text">0</p>
+              </div>
+              <button id="increase-button" class="step-button" type="button" aria-label="Increase semitone">+</button>
+            </div>
           </div>
-          <button id="increase-button" class="step-button" type="button" aria-label="Increase semitone">+</button>
+
+          <div class="control-group">
+            <div class="group-header">
+              <p class="group-title">Tempo</p>
+              <p class="group-copy">Change playback speed without changing pitch.</p>
+            </div>
+
+            <div class="transport">
+              <button id="tempo-decrease-button" class="step-button" type="button" aria-label="Decrease playback speed">-</button>
+              <div class="value-card">
+                <p class="value-label">Playback</p>
+                <p id="tempo-value" class="value-text">1x</p>
+              </div>
+              <button id="tempo-increase-button" class="step-button" type="button" aria-label="Increase playback speed">+</button>
+            </div>
+          </div>
+
+          <div class="controls">
+            <button
+              id="toggle-button"
+              class="power-button"
+              type="button"
+              aria-label="Turn TuneShift on"
+              aria-pressed="false"
+              title="Turn TuneShift on"
+            >
+              <svg class="power-icon" viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M32 10v18"></path>
+                <path d="M20 18a20 20 0 1 0 24 0"></path>
+              </svg>
+            </button>
+            <button id="reset-button" class="reset-button" type="button">Reset All</button>
+          </div>
         </div>
 
-        <div class="controls">
-          <button id="toggle-button" class="toggle-button" type="button">Turn On</button>
-          <button id="reset-button" class="reset-button" type="button">Reset</button>
-        </div>
-      </section>
-
-      <section class="panel status-panel">
-        <div class="status-row">
+        <div class="status-note">
           <span id="status-dot" class="status-dot"></span>
-          <div class="status-copy">
-            <div class="status-label">Pipeline status</div>
-            <p id="status-text" class="status-text">Checking active tab...</p>
-          </div>
+          <p id="status-text" class="status-text">Checking active tab...</p>
         </div>
-
-        <dl>
-          <dt>Detected</dt>
-          <dd id="detected-value">-</dd>
-
-          <dt>ReadyState</dt>
-          <dd id="ready-state-value">-</dd>
-
-          <dt>Buffered</dt>
-          <dd id="buffered-value">-</dd>
-
-          <dt>Video Src</dt>
-          <dd id="src-value">-</dd>
-        </dl>
-
-        <p id="hint-text" class="hint">
-          Open a YouTube watch page, start playback, then use the controls above to shift the song by semitone steps.
-        </p>
       </section>
     </main>
 

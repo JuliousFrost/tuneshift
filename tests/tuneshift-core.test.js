@@ -1,7 +1,11 @@
 const {
+  PLAYBACK_RATE_PRESETS,
   clampSemitones,
+  clampPlaybackRate,
   createTabState,
+  formatPlaybackRate,
   formatSemitoneValue,
+  stepPlaybackRate,
   mergeTabState,
   semitonesToPitchFactor,
   serializeError,
@@ -28,23 +32,49 @@ describe("tuneshift-core", () => {
     expect(formatSemitoneValue(-4)).toBe("-4");
   });
 
-  it("creates and merges tab state with derived pitch data", () => {
+  it("snaps playback-rate values to the supported preset list", () => {
+    expect(PLAYBACK_RATE_PRESETS).toEqual([0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5]);
+    expect(clampPlaybackRate(0.52)).toBe(0.5);
+    expect(clampPlaybackRate(0.8)).toBe(0.75);
+    expect(clampPlaybackRate(0.9)).toBe(0.85);
+    expect(clampPlaybackRate(1.08)).toBe(1.15);
+    expect(clampPlaybackRate(1.39)).toBe(1.5);
+    expect(clampPlaybackRate("bad")).toBe(1);
+  });
+
+  it("formats and steps playback-rate values for the popup", () => {
+    expect(formatPlaybackRate(1)).toBe("1x");
+    expect(formatPlaybackRate(0.75)).toBe("0.75x");
+    expect(formatPlaybackRate(1.5)).toBe("1.5x");
+
+    expect(stepPlaybackRate(1, -1)).toBe(0.85);
+    expect(stepPlaybackRate(1, 1)).toBe(1.15);
+    expect(stepPlaybackRate(0.5, -1)).toBe(0.5);
+    expect(stepPlaybackRate(1.5, 1)).toBe(1.5);
+    expect(stepPlaybackRate("bad", 1)).toBe(1.15);
+  });
+
+  it("creates and merges tab state with derived pitch and playback data", () => {
     const initialState = createTabState({
       enabled: true,
       semitones: -2,
+      playbackRate: 1.15,
     });
 
     expect(initialState.enabled).toBe(true);
     expect(initialState.semitones).toBe(-2);
     expect(initialState.pitchFactor).toBeCloseTo(0.890899, 5);
+    expect(initialState.playbackRate).toBe(1.15);
 
     const mergedState = mergeTabState(initialState, {
       semitones: 5,
+      playbackRate: 0.5,
       status: "Pitch shift active",
     });
 
     expect(mergedState.semitones).toBe(5);
     expect(mergedState.pitchFactor).toBeCloseTo(1.33484, 5);
+    expect(mergedState.playbackRate).toBe(0.5);
     expect(mergedState.status).toBe("Pitch shift active");
     expect(typeof mergedState.timestamp).toBe("number");
   });

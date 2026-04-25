@@ -7,9 +7,12 @@
   root.TuneShiftAudioEngine = factory(root.TuneShiftCore);
 })(typeof globalThis !== "undefined" ? globalThis : this, function (core) {
   const {
+    DEFAULT_PLAYBACK_RATE,
     DEFAULT_PROCESSOR_BUFFER_SIZE,
+    clampPlaybackRate,
     clampSemitones,
     createTabState,
+    formatPlaybackRate,
     formatSemitoneValue,
     mergeTabState,
     semitonesToPitchFactor,
@@ -29,6 +32,18 @@
     return node?.parameters?.get?.(name) ?? null;
   }
 
+  function buildSettingsLabel(semitones, playbackRate) {
+    return `${formatSemitoneValue(semitones)} st, ${formatPlaybackRate(playbackRate)}`;
+  }
+
+  function buildActiveStatus(semitones, playbackRate) {
+    return `TuneShift active (${buildSettingsLabel(semitones, playbackRate)})`;
+  }
+
+  function buildReadyStatus(semitones, playbackRate) {
+    return `TuneShift ready (${buildSettingsLabel(semitones, playbackRate)})`;
+  }
+
   class TuneShiftAudioEngine {
     constructor(options) {
       const config = options || {};
@@ -42,6 +57,7 @@
       this.video = null;
       this.desiredEnabled = false;
       this.semitones = 0;
+      this.playbackRate = DEFAULT_PLAYBACK_RATE;
       this.soundTouchModulePromise = null;
       this.startPromise = null;
 
@@ -51,7 +67,9 @@
       this.processorNode = null;
       this.processorCompressorNode = null;
       this.outputGainNode = null;
+      this.originalPlaybackRate = DEFAULT_PLAYBACK_RATE;
       this.originalPreservesPitch = null;
+      this.originalPitchPropertyName = null;
       this.lastStateSignature = null;
 
       this.handleVideoPlay = this.handleVideoPlay.bind(this);
@@ -68,6 +86,7 @@
       return mergeTabState(this.state, {
         enabled: this.desiredEnabled,
         semitones: this.semitones,
+        playbackRate: this.playbackRate,
         videoDetected: Boolean(this.video),
         pageUrl: globalThis.location?.href || null,
         videoSrc: this.video?.currentSrc || this.video?.src || null,
@@ -79,6 +98,11 @@
 
     async attachVideo(video) {
       if (this.video === video) {
+        if (!this.desiredEnabled) {
+          this.captureVideoDefaults();
+        }
+
+        this.applyMediaElementState();
         this.reportState({
           videoDetected: Boolean(video),
           videoSrc: video?.currentSrc || video?.src || null,
@@ -97,6 +121,7 @@
 
       this.detachVideoListeners();
       this.video = video || null;
+      this.captureVideoDefaults();
       this.attachVideoListeners();
 
       this.reportState({
@@ -123,11 +148,12 @@
       this.desiredEnabled = Boolean(enabled);
 
       if (!this.desiredEnabled) {
+        this.applyMediaElementState();
         this.applyRoutingMode();
         this.reportState({
           enabled: false,
           pipelineState: this.video ? "ready" : "idle",
-          status: "Pitch shift disabled",
+          status: buildReadyStatus(this.semitones, this.playbackRate),
           lastError: null,
         });
         return this.getState();
@@ -154,8 +180,23 @@
         semitones: this.semitones,
         pitchFactor: semitonesToPitchFactor(this.semitones),
         status: this.desiredEnabled
-          ? `Pitch shift active (${formatSemitoneValue(this.semitones)} st)`
-          : `Pitch shift ready (${formatSemitoneValue(this.semitones)} st)`,
+          ? buildActiveStatus(this.semitones, this.playbackRate)
+          : buildReadyStatus(this.semitones, this.playbackRate),
+      });
+
+      return this.getState();
+    }
+
+    async setPlaybackRate(value) {
+      this.playbackRate = clampPlaybackRate(value);
+      this.applyProcessorParameters();
+      this.applyMediaElementState();
+
+      this.reportState({
+        playbackRate: this.playbackRate,
+        status: this.desiredEnabled
+          ? buildActiveStatus(this.semitones, this.playbackRate)
+          : buildReadyStatus(this.semitones, this.playbackRate),
       });
 
       return this.getState();
@@ -216,12 +257,13 @@
         }
 
         this.applyProcessorParameters();
+        this.applyMediaElementState();
         this.applyRoutingMode();
 
         this.reportState({
           enabled: true,
           pipelineState: "active",
-          status: `Pitch shift active (${formatSemitoneValue(this.semitones)} st)`,
+          status: buildActiveStatus(this.semitones, this.playbackRate),
           lastError: null,
         });
       } catch (error) {
@@ -294,8 +336,8 @@
       this.processorCompressorNode = processorCompressorNode;
       this.outputGainNode = outputGainNode;
 
-      this.storePitchHandlingState();
       this.applyProcessorParameters();
+      this.applyMediaElementState();
       this.applyRoutingMode();
     }
 
@@ -309,7 +351,7 @@
       this.safeDisconnect(this.bypassGainNode);
       this.safeDisconnect(this.sourceNode);
 
-      this.restorePitchHandlingState();
+      this.restoreMediaElementState();
 
       this.outputGainNode = null;
       this.processorCompressorNode = null;
@@ -387,12 +429,17 @@
     handleVideoSeek() {
       this.reportState({
         status: this.desiredEnabled
-          ? `Pitch shift active (${formatSemitoneValue(this.semitones)} st)`
-          : "Video seeked",
+          ? buildActiveStatus(this.semitones, this.playbackRate)
+          : buildReadyStatus(this.semitones, this.playbackRate),
       });
     }
 
     handleVideoLoadedMetadata() {
+      if (!this.desiredEnabled) {
+        this.captureVideoDefaults();
+      }
+
+      this.applyMediaElementState();
       this.handleVideoSeek();
       this.reportState({
         readyState: this.video?.readyState ?? null,
@@ -400,32 +447,58 @@
       });
     }
 
-    storePitchHandlingState() {
+    captureVideoDefaults() {
+      if (!this.video) {
+        this.originalPlaybackRate = DEFAULT_PLAYBACK_RATE;
+        this.originalPreservesPitch = null;
+        this.originalPitchPropertyName = null;
+        return;
+      }
+
+      const initialPlaybackRate = Number(this.video.playbackRate);
+      this.originalPlaybackRate =
+        Number.isFinite(initialPlaybackRate) && initialPlaybackRate > 0
+          ? initialPlaybackRate
+          : DEFAULT_PLAYBACK_RATE;
+
+      if ("preservesPitch" in this.video) {
+        this.originalPitchPropertyName = "preservesPitch";
+        this.originalPreservesPitch = this.video.preservesPitch;
+      } else if ("webkitPreservesPitch" in this.video) {
+        this.originalPitchPropertyName = "webkitPreservesPitch";
+        this.originalPreservesPitch = this.video.webkitPreservesPitch;
+      } else {
+        this.originalPitchPropertyName = null;
+        this.originalPreservesPitch = null;
+      }
+    }
+
+    restoreMediaElementState() {
       if (!this.video) {
         return;
       }
 
-      if ("preservesPitch" in this.video) {
-        this.originalPreservesPitch = this.video.preservesPitch;
-        this.video.preservesPitch = false;
-      } else if ("webkitPreservesPitch" in this.video) {
-        this.originalPreservesPitch = this.video.webkitPreservesPitch;
-        this.video.webkitPreservesPitch = false;
+      if (this.originalPitchPropertyName && this.originalPreservesPitch !== null) {
+        this.video[this.originalPitchPropertyName] = this.originalPreservesPitch;
+      }
+
+      if ("playbackRate" in this.video) {
+        this.video.playbackRate = this.originalPlaybackRate;
       }
     }
 
-    restorePitchHandlingState() {
-      if (!this.video || this.originalPreservesPitch === null) {
+    applyMediaElementState() {
+      if (!this.video) {
         return;
       }
 
-      if ("preservesPitch" in this.video) {
-        this.video.preservesPitch = this.originalPreservesPitch;
-      } else if ("webkitPreservesPitch" in this.video) {
-        this.video.webkitPreservesPitch = this.originalPreservesPitch;
+      if (this.originalPitchPropertyName && this.originalPreservesPitch !== null) {
+        this.video[this.originalPitchPropertyName] = this.desiredEnabled ? false : this.originalPreservesPitch;
       }
 
-      this.originalPreservesPitch = null;
+      if ("playbackRate" in this.video) {
+        this.video.playbackRate = this.desiredEnabled ? this.playbackRate : this.originalPlaybackRate;
+      }
     }
 
     applyProcessorParameters() {
@@ -456,7 +529,7 @@
       }
 
       if (playbackRate) {
-        playbackRate.value = 1;
+        playbackRate.value = this.playbackRate;
       }
     }
 

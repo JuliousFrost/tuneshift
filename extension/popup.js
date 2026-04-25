@@ -1,67 +1,139 @@
-const { MAX_SEMITONES, MESSAGE_TYPES, MIN_SEMITONES, clampSemitones, formatSemitoneValue } = TuneShiftCore;
+const {
+  DEFAULT_PLAYBACK_RATE,
+  MAX_SEMITONES,
+  MESSAGE_TYPES,
+  MIN_SEMITONES,
+  PLAYBACK_RATE_PRESETS,
+  clampPlaybackRate,
+  clampSemitones,
+  formatPlaybackRate,
+  formatSemitoneValue,
+  stepPlaybackRate,
+} = TuneShiftCore;
 
 const semitoneValue = document.getElementById("semitone-value");
+const tempoValue = document.getElementById("tempo-value");
 const toggleButton = document.getElementById("toggle-button");
 const decreaseButton = document.getElementById("decrease-button");
 const increaseButton = document.getElementById("increase-button");
+const tempoDecreaseButton = document.getElementById("tempo-decrease-button");
+const tempoIncreaseButton = document.getElementById("tempo-increase-button");
 const resetButton = document.getElementById("reset-button");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
-const detectedValue = document.getElementById("detected-value");
-const readyStateValue = document.getElementById("ready-state-value");
-const bufferedValue = document.getElementById("buffered-value");
-const srcValue = document.getElementById("src-value");
-const hintText = document.getElementById("hint-text");
 
 const popupState = {
   activeTab: null,
   state: null,
+  pendingMutations: 0,
+  requestQueue: Promise.resolve(),
 };
+
+function createFallbackState() {
+  return {
+    enabled: false,
+    semitones: 0,
+    playbackRate: DEFAULT_PLAYBACK_RATE,
+    status: "No state available",
+    videoDetected: false,
+    pipelineState: "idle",
+    readyState: null,
+    bufferedFrames: 0,
+    videoSrc: null,
+  };
+}
 
 function setControlAvailability(enabled) {
   toggleButton.disabled = !enabled;
   decreaseButton.disabled = !enabled;
   increaseButton.disabled = !enabled;
+  tempoDecreaseButton.disabled = !enabled;
+  tempoIncreaseButton.disabled = !enabled;
   resetButton.disabled = !enabled;
 }
 
 function setView(state, options = {}) {
-  popupState.state = state || popupState.state;
+  if (state === null) {
+    popupState.state = null;
+  } else if (state) {
+    popupState.state = state;
+  }
 
   const tabSupported = options.tabSupported !== false;
-  const nextState = popupState.state || {
-    enabled: false,
-    semitones: 0,
-    status: "No state available",
-    videoDetected: false,
-    readyState: null,
-    bufferedFrames: 0,
-    videoSrc: null,
-  };
+  const nextState = popupState.state || createFallbackState();
 
   semitoneValue.textContent = formatSemitoneValue(nextState.semitones);
-  toggleButton.textContent = nextState.enabled ? "Turn Off" : "Turn On";
+  tempoValue.textContent = formatPlaybackRate(nextState.playbackRate);
   toggleButton.classList.toggle("on", Boolean(nextState.enabled));
+  toggleButton.setAttribute("aria-pressed", String(Boolean(nextState.enabled)));
+  toggleButton.setAttribute("aria-label", nextState.enabled ? "Turn TuneShift off" : "Turn TuneShift on");
+  toggleButton.setAttribute("title", nextState.enabled ? "Turn TuneShift off" : "Turn TuneShift on");
   statusText.textContent = options.fallbackStatus || nextState.status || "No status available";
-  detectedValue.textContent = nextState.videoDetected ? "Yes" : "No";
-  readyStateValue.textContent = nextState.readyState ?? "-";
-  bufferedValue.textContent = nextState.bufferedFrames ?? 0;
-  srcValue.textContent = nextState.videoSrc || "-";
 
   const ready = nextState.pipelineState === "active" || nextState.videoDetected;
   statusDot.classList.toggle("ready", ready);
 
   const canDecrease = tabSupported && nextState.semitones > MIN_SEMITONES;
   const canIncrease = tabSupported && nextState.semitones < MAX_SEMITONES;
+  const playbackRateIndex = PLAYBACK_RATE_PRESETS.indexOf(nextState.playbackRate);
+  const canDecreasePlayback = tabSupported && playbackRateIndex > 0;
+  const canIncreasePlayback = tabSupported && playbackRateIndex < PLAYBACK_RATE_PRESETS.length - 1;
 
   setControlAvailability(tabSupported);
   decreaseButton.disabled = !canDecrease;
   increaseButton.disabled = !canIncrease;
-  resetButton.disabled = !tabSupported || nextState.semitones === 0;
+  tempoDecreaseButton.disabled = !canDecreasePlayback;
+  tempoIncreaseButton.disabled = !canIncreasePlayback;
+  resetButton.disabled =
+    !tabSupported || (nextState.semitones === 0 && nextState.playbackRate === DEFAULT_PLAYBACK_RATE);
+}
 
-  hintText.textContent = tabSupported
-    ? "The processed audio replaces the muted YouTube element while TuneShift is on. Toggle off to restore the original path."
-    : "Open a YouTube watch page before using TuneShift. The popup only controls the active YouTube tab.";
+function queueStateMutation(partialState, messageFactory, fallbackStatus) {
+  if (!popupState.activeTab?.id) {
+    return Promise.resolve();
+  }
+
+  const optimisticState = {
+    ...(popupState.state || createFallbackState()),
+    ...(partialState || {}),
+  };
+
+  popupState.state = optimisticState;
+  setView(optimisticState, {
+    tabSupported: true,
+    fallbackStatus,
+  });
+
+  popupState.pendingMutations += 1;
+
+  const requestPromise = popupState.requestQueue
+    .catch(() => {})
+    .then(() =>
+      sendRuntimeMessage({
+        ...(typeof messageFactory === "function" ? messageFactory() : messageFactory),
+        tabId: popupState.activeTab.id,
+      })
+    );
+
+  popupState.requestQueue = requestPromise.finally(() => {
+    popupState.pendingMutations = Math.max(0, popupState.pendingMutations - 1);
+  });
+
+  return requestPromise
+    .then((response) => {
+      setView(response?.state || popupState.state, {
+        tabSupported: true,
+      });
+
+      return response;
+    })
+    .catch((error) => {
+      setView(popupState.state, {
+        tabSupported: true,
+        fallbackStatus: error.message,
+      });
+      throw error;
+    });
 }
 
 function queryActiveTab() {
@@ -118,6 +190,13 @@ async function refreshState() {
     return;
   }
 
+  if (popupState.pendingMutations > 0) {
+    setView(popupState.state, {
+      tabSupported: true,
+    });
+    return;
+  }
+
   const response = await sendRuntimeMessage({
     type: MESSAGE_TYPES.GET_TAB_STATE,
     tabId: popupState.activeTab.id,
@@ -137,35 +216,48 @@ async function refreshState() {
 }
 
 async function updateEnabled(enabled) {
-  if (!popupState.activeTab?.id) {
-    return;
-  }
-
-  const response = await sendRuntimeMessage({
-    type: MESSAGE_TYPES.SET_ENABLED,
-    tabId: popupState.activeTab.id,
-    enabled,
-  });
-
-  setView(response?.state || popupState.state, {
-    tabSupported: true,
-  });
+  return queueStateMutation(
+    {
+      enabled: Boolean(enabled),
+      pipelineState: Boolean(enabled) ? "waiting" : "ready",
+    },
+    () => ({
+      type: MESSAGE_TYPES.SET_ENABLED,
+      enabled,
+    }),
+    Boolean(enabled) ? "Starting TuneShift" : "Turning TuneShift off"
+  );
 }
 
 async function updateSemitones(semitones) {
-  if (!popupState.activeTab?.id) {
-    return;
-  }
+  const nextSemitones = clampSemitones(semitones);
+  return queueStateMutation(
+    {
+      semitones: nextSemitones,
+    },
+    () => ({
+      type: MESSAGE_TYPES.SET_SEMITONES,
+      semitones: nextSemitones,
+    }),
+    "Updating semitone shift"
+  );
+}
 
-  const response = await sendRuntimeMessage({
-    type: MESSAGE_TYPES.SET_SEMITONES,
-    tabId: popupState.activeTab.id,
-    semitones: clampSemitones(semitones),
-  });
-
-  setView(response?.state || popupState.state, {
-    tabSupported: true,
-  });
+async function updatePlaybackRate(playbackRate) {
+  const nextPlaybackRate = clampPlaybackRate(playbackRate);
+  return queueStateMutation(
+    {
+      enabled: nextPlaybackRate !== DEFAULT_PLAYBACK_RATE ? true : (popupState.state?.enabled ?? false),
+      pipelineState:
+        nextPlaybackRate !== DEFAULT_PLAYBACK_RATE || popupState.state?.enabled ? "waiting" : "ready",
+      playbackRate: nextPlaybackRate,
+    },
+    () => ({
+      type: MESSAGE_TYPES.SET_PLAYBACK_RATE,
+      playbackRate: nextPlaybackRate,
+    }),
+    "Updating playback speed"
+  );
 }
 
 decreaseButton.addEventListener("click", () => {
@@ -188,13 +280,35 @@ increaseButton.addEventListener("click", () => {
   });
 });
 
-resetButton.addEventListener("click", () => {
-  updateSemitones(0).catch((error) => {
+tempoDecreaseButton.addEventListener("click", () => {
+  const nextValue = stepPlaybackRate(popupState.state?.playbackRate || DEFAULT_PLAYBACK_RATE, -1);
+  updatePlaybackRate(nextValue).catch((error) => {
     setView(popupState.state, {
       tabSupported: true,
       fallbackStatus: error.message,
     });
   });
+});
+
+tempoIncreaseButton.addEventListener("click", () => {
+  const nextValue = stepPlaybackRate(popupState.state?.playbackRate || DEFAULT_PLAYBACK_RATE, 1);
+  updatePlaybackRate(nextValue).catch((error) => {
+    setView(popupState.state, {
+      tabSupported: true,
+      fallbackStatus: error.message,
+    });
+  });
+});
+
+resetButton.addEventListener("click", () => {
+  updateSemitones(0)
+    .then(() => updatePlaybackRate(DEFAULT_PLAYBACK_RATE))
+    .catch((error) => {
+      setView(popupState.state, {
+        tabSupported: true,
+        fallbackStatus: error.message,
+      });
+    });
 });
 
 toggleButton.addEventListener("click", () => {

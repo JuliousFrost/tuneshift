@@ -126,6 +126,7 @@ function watchDomForVideoChanges() {
 async function applyDesiredState(partialState) {
   controllerState.desiredState = mergeTabState(controllerState.desiredState, partialState || {});
   await engine.setSemitones(controllerState.desiredState.semitones);
+  await engine.setPlaybackRate(controllerState.desiredState.playbackRate);
   await engine.setEnabled(controllerState.desiredState.enabled);
 }
 

@@ -68,6 +68,7 @@ function createFakeVideo(overrides = {}) {
     src: "https://www.youtube.com/watch?v=test",
     readyState: 4,
     paused: false,
+    playbackRate: 1,
     volume: 0.65,
     preservesPitch: true,
     play: vi.fn(async () => {}),
@@ -128,11 +129,13 @@ describe("TuneShiftAudioEngine", () => {
     expect(fakeContext.resume).toHaveBeenCalledTimes(1);
     expect(engine.getState().pipelineState).toBe("active");
     expect(engine.getState().pitchFactor).toBeCloseTo(0.840896, 5);
+    expect(engine.getState().playbackRate).toBe(1);
     expect(engine.processorNode.parameters.get("pitchSemitones").value).toBe(-3);
     expect(engine.processorNode.parameters.get("pitch").value).toBe(1);
     expect(engine.processorNode.parameters.get("tempo").value).toBe(1);
     expect(engine.processorNode.parameters.get("rate").value).toBe(1);
     expect(engine.processorNode.parameters.get("playbackRate").value).toBe(1);
+    expect(video.playbackRate).toBe(1);
     expect(engine.processorCompressorNode.threshold.value).toBe(-10);
     expect(engine.bypassGainNode.gain.value).toBe(0);
     expect(engine.outputGainNode.gain.value).toBe(0.9);
@@ -145,6 +148,41 @@ describe("TuneShiftAudioEngine", () => {
     expect(engine.getState().pipelineState).toBe("ready");
     expect(engine.bypassGainNode.gain.value).toBe(1);
     expect(engine.outputGainNode.gain.value).toBe(0);
+    expect(video.playbackRate).toBe(1);
+  });
+
+  it("applies playback-rate changes only while TuneShift is active", async () => {
+    const fakeContext = createFakeAudioContext();
+    const fakeModule = createFakeSoundTouchModule();
+    const engine = new TuneShiftAudioEngine({
+      loadSoundTouchModule: async () => fakeModule.module,
+      createAudioContext: () => fakeContext,
+      processorUrl: "/soundtouch-processor.js",
+    });
+    const video = createFakeVideo();
+
+    await engine.attachVideo(video);
+    await engine.setPlaybackRate(1.25);
+
+    expect(engine.getState().playbackRate).toBe(1.25);
+    expect(video.playbackRate).toBe(1);
+
+    await engine.setEnabled(true);
+
+    expect(video.playbackRate).toBe(1.25);
+    expect(engine.processorNode.parameters.get("playbackRate").value).toBe(1.25);
+    expect(engine.getState().status).toContain("1.25x");
+
+    await engine.setPlaybackRate(0.75);
+
+    expect(video.playbackRate).toBe(0.75);
+    expect(engine.processorNode.parameters.get("playbackRate").value).toBe(0.75);
+    expect(engine.getState().playbackRate).toBe(0.75);
+
+    await engine.setEnabled(false);
+
+    expect(video.playbackRate).toBe(1);
+    expect(engine.getState().pipelineState).toBe("ready");
   });
 
   it("waits for a video and starts once one is attached", async () => {
