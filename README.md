@@ -103,7 +103,11 @@ tests/
 
 ## Development
 
-Install dependencies:
+The extension does not need a build step. For normal development, edit files in `extension/`, then reload the unpacked extension from `chrome://extensions`.
+
+NPM is only needed if you want to run the automated test suite.
+
+Install test dependencies:
 
 ```bash
 npm install
@@ -120,8 +124,6 @@ Run coverage:
 ```bash
 npm run test:coverage
 ```
-
-After editing files inside `extension/`, reload the unpacked extension from `chrome://extensions` before testing in Chrome.
 
 ## Tech Notes
 
@@ -141,6 +143,8 @@ After editing files inside `extension/`, reload the unpacked extension from `chr
 - This is not intended to replace a DAW or professional pitch correction workflow.
 
 ## License
+
+TuneShift is released under the MIT License.
 
 This project includes third-party SoundTouch license files under `extension/pitch/` and `extension/pitch/worklet/`.
 
