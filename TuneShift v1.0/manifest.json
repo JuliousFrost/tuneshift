@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "TuneShift",
+  "version": "0.1.0",
+  "description": "Real-time YouTube semitone pitch shifting for instrument practice.",
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "permissions": [
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "TuneShift",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "lib/tuneshift-core.js",
+        "lib/tuneshift-audio-engine.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "pitch/worklet/index.js",
+        "pitch/worklet/SoundTouchNode.js",
+        "pitch/worklet/constants.js",
+        "pitch/worklet/soundtouch-processor.js",
+        "pitch/worklet/SOUNDTOUCH-WORKLET-LICENSE.txt"
+      ],
+      "matches": [
+        "https://www.youtube.com/*"
+      ]
+    }
+  ]
+}
