@@ -1,8 +1,20 @@
 # TuneShift
 
+<p>
+  <img src="landing/assets/icons/icon-128.png" alt="TuneShift icon" width="72">
+</p>
+
 TuneShift is a Chrome extension for musicians, vocalists, producers, and practice-heavy listeners who need quick pitch and playback control on YouTube.
 
 It lets you shift YouTube audio by semitones and adjust playback speed from a compact popup, without leaving the video page or reaching for a separate audio tool.
+
+## Preview
+
+![TuneShift popup running on YouTube](landing/assets/images/tuneshift-on-youtube.png)
+
+| Dark mode | Light mode |
+| --- | --- |
+| ![TuneShift popup in dark mode](landing/assets/images/tuneshift_darkmode_mode.png) | ![TuneShift popup in light mode](landing/assets/images/tuneshift_white_mode.png) |
 
 ## What It Does
 
@@ -28,9 +40,15 @@ TuneShift keeps those controls close:
 
 ## Current Status
 
-TuneShift is an early Chrome extension MVP.
+TuneShift is available on the Chrome Web Store and can also be loaded manually for development.
 
 The core popup, YouTube content script, background messaging, playback speed controls, semitone state handling, icons, and automated tests are in place. Audio quality and browser behavior can still vary depending on the video, tab state, and Chrome audio pipeline.
+
+## Install
+
+Install from the Chrome Web Store:
+
+[Add TuneShift to Chrome](https://chromewebstore.google.com/detail/tuneshift/ceghljijednkefpinoiilknjfgeffcbl)
 
 ## Installation For Development
 
