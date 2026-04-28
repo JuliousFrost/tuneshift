@@ -1,5 +1,6 @@
 node_modules/
 coverage/
+prd.md
 
 *.log
 npm-debug.log*
